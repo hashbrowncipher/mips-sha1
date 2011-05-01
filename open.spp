@@ -1,0 +1,48 @@
+#define open_ro
+	la $a0, %1
+	li $a1, 0	
+	li $v0, 13
+
+	syscall
+#end
+
+#define close
+	li $v0, 16
+	syscall
+#end
+
+#define read
+	li $v0, 14
+	syscall
+#end
+
+#define sbrk
+	li $v0, 9
+	syscall
+#end
+
+#define print_integer
+	li $v0, 1
+	syscall
+#end
+
+#define	exit
+	li $v0, 10
+	syscall
+#end
+
+#include read_whole_file.spp
+
+.data
+filename:
+.asciiz "input.bin"
+
+.text
+
+	read_whole_file	filename
+	
+	move	$a0, $v0
+	srl		$a1, $v1, 29	#load the top three bits into hlength
+	sll		$a2, $v1, 3		#load the bottom 29 bits into llength
+	
+	exit

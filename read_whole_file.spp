@@ -1,0 +1,45 @@
+#define	read_whole_file
+	open_ro %1 0
+
+@fd = $t0
+@addr = $t1
+@len = $t2
+
+
+	move	@fd, $v0
+	li		@len, 0
+
+	li		$a0, 4096
+	sbrk
+
+	move	@addr, $v0
+	move 	$a1, @addr
+
+	move	$a0, @fd
+	li		$a2, 4096
+length_loop:
+	read
+	addu	@len, @len, $v0
+
+	bgt		$v0, $0, length_loop
+
+	close
+	open_ro %1
+
+	addi 	$a0, @len, -4096
+	bltz	$a0, skip_sbrk
+	sbrk
+
+skip_sbrk:
+
+	move	$a0, @fd
+	move	$a1, @addr
+	move	$a2, @len
+	read
+
+	move	$v1, $v0 #return the length
+
+	close
+
+	move	$v0, @addr #return the buffer address
+#end
