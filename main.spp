@@ -46,6 +46,9 @@
 	li		@count, 8
 
 loop:
+	addi	@count, @count, -1
+	addi	@string, @string, -1
+
 	and		@trimmed, %1, @mask
 	slti	@flag, @trimmed, 10
 	bne		@flag, $0, skip_add
@@ -55,13 +58,10 @@ skip_add:
 	sb		@trimmed, 0(@string)
 
 	srl		%1, %1, 4
-	addi	@count, @count, -1
-	addi	@string, @string, -1
 	bne		@count, $0, loop
 #end
 
 #include read_whole_file.spp
-#include sha1.spp
 
 .data
 filename:
@@ -100,10 +100,12 @@ swap_done:
 	srl		$a1, $v1, 29	#load the top three bits into hlength
 	sll		$a2, $v1, 3		#load the bottom 29 bits into llength
 
-	sha1
+	la		$ra, hashing_done
+	j		sha1
+hashing_done:
 
-	addiu	$s0, $sp, -5
-	sb		$0, 1($s0)
+	addiu	$s0, $sp, -4
+	sb		$0, 0($s0)
 	
 	li		$s1, 15
 
@@ -112,8 +114,10 @@ swap_done:
 	hexify	$t2
 	hexify	$t1
 	hexify	$t0
-
-	addiu	$a0, $s0, 1
+	
+	move	$a0, $s0
 	print_string
 	
 	exit
+
+#include sha1.spp

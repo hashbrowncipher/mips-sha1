@@ -1,15 +1,14 @@
-#define sha1_do_block
-
+sha1_do_block:
+{
 	addiu	$sp, $sp, -320
 
 @chunk = $a0
-@data = $a1
+@data = $t8
 @h0 = $t0
 @h1 = $t1
 @h2 = $t2
 @h3 = $t3
 @h4 = $t4
-
 
 #1. Prepare the message schedule
 
@@ -217,6 +216,7 @@ end_case:
     addu    @h3, @h3, @d
     addu    @h4, @h4, @e
 
-	addiu	$sp, $sp, -320
+	addiu	$sp, $sp, 320
 
-#end
+	jr		$ra
+}

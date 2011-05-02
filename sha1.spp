@@ -1,11 +1,7 @@
 #include sha1_do_block.spp
 
-#define sha1
+#define sha1_init
 {
-	sw		$fp, -4($sp)		#Push the frame pointer onto the stack
-	addiu	$fp, $sp, -4		#Set a new frame pointer
-	addiu	$sp, $fp, -160		#Allocate myself 8 words + 2 * 512 bits = 160 bytes on the stack
-
 #pointer to message
 @message = $a0
 #length of message in bits, high part
@@ -15,7 +11,7 @@
 
     sll     $t0, @message, 30       #$t0 CONTAINS 0 if the message is word aligned
     sltu    $v0, $0, $t0			#If not word aligned, set error code
-    bne     $v0, $0, end			#Give up if not word aligned
+    bne     $v0, $0, sha1_end			#Give up if not word aligned
 
 	sw 		$s7, -4($fp)
 	sw		$s6, -8($fp)
@@ -28,43 +24,46 @@
 
 	sw		$a2, -36($fp)		#We can go ahead and store the length on the stack now
 	sw		$a1, -40($fp)
-
-@blocks     = $t0
-@bits       = $t1
 	
-	sll     $t0, @hlength, 23
-	srl		$t1, @llength, 9
-	or      @blocks, $t1, $t0
+	sll     @hlength, @hlength, 23
+	srl		$t0, @llength, 9
+	or      @hlength, @hlength, $t0
+	sll		@hlength, @hlength, 6
+	addu	@hlength, @hlength, @message	#We are now using $a1 to store the location of the last block
 
-	sll		$t1, @llength, 23
-	srl		@bits, $t1, 23
+	sll		@llength, @llength, 23
+	srl		@llength, @llength, 23			#and we are using $a2 to store the bits count in the last block
+	
+	sltiu	$t0, @llength, 448				#If we have fewer than 448 bits, then we can give 512 bits of stack back
+	sll		$t0, $t0, 6
+	addu	$sp, $sp, $t0
+}
+#end
 
-	#TODO: We may be able to get rid of $a1 and $a2 now
-	sltiu	$t2, $t1, 448			#If we have fewer than 448 bits, then we can give 512 bits of stack back
-	sll		$t2, $t2, 6
-	addu	$sp, $sp, $t2
-
+#define sha1_copy
 {
-@dstitr = $t3
-@srcitr = $t4
-@limit  = $t5
-@temp	= $t6
+@message	= $a0
+@last		= $a1
+@bits		= $a2
 
-	add		@dstitr, $sp, 40			#This allows us to stop writing at @dstitr == -40($fp)
+@dstitr  = $t0
+@srcitr  = $t1
+@limit   = $t2
+@temp	 = $t3
+
+	addiu	@dstitr, $sp, 40			#This allows us to stop writing at @dstitr == -40($fp)
 
 	beq		@bits, $0, copy_done		#Skip copying if we have no extra bits laying around
 	
+	move	@srcitr, @last
 	move	@limit, @bits
-
-	sll		@srcitr, @blocks, 6			#Number of bytes to the last block
-	add		@srcitr, @srcitr, @message	#Address of last block
 
 copy_loop:
 	lw		@temp, 0(@srcitr)
 	sw		@temp, -40(@dstitr)
-	addi	@limit, @limit, -32
-	addi	@srcitr, @srcitr, 4
-	addi	@dstitr, @dstitr, 4
+	addiu	@limit, @limit, -32
+	addiu	@srcitr, @srcitr, 4
+	addiu	@dstitr, @dstitr, 4
 	bgtz	@limit, copy_loop
 
 copy_done:
@@ -72,17 +71,20 @@ copy_done:
 	
 zero_loop:
 	sw		$0, -40(@dstitr)
-	addi	@dstitr, @dstitr, 4
+	addiu	@dstitr, @dstitr, 4
 	bne		@dstitr, $fp, zero_loop
 	
 zero_done:
 }
+#end
 
-#Pad the data
+#define sha1_pad
+{
+@bits		= $a2
+@pad_addr	= $t0
+@pad_data	= $t1
+@pad_temp	= $t2
 
-@pad_addr = $t7
-@pad_data = $t8
-@pad_temp = $t9
 	srl		@pad_addr, @bits, 5			#Divide bits by 32 to get the word
 	sll		@pad_addr, @pad_addr, 2			#Multiply by 4 to get the number of bytes
 	addu	@pad_addr, @pad_addr, $sp		#Position of the word where the message ends
@@ -102,19 +104,50 @@ zero_done:
 	
 	sw		@pad_data, 0(@pad_addr)
 }
-	move	$a0, $sp
-	
+#end
+
+sha1:
+	sw		$ra, -4($sp)
+	sw		$fp, -8($sp)
+	addiu	$fp, $sp, -8
+	addiu	$sp, $fp, -160		#Allocate myself 8 words + 2 * 512 bits = 160 bytes on the stack
+
+	sha1_init
+	sha1_copy
+	sha1_pad
 	
 	li		$t0, 0x67452301
 	li		$t1, 0xEFCDAB89
 	li		$t2, 0x98BADCFE
 	li		$t3, 0x10325476
 	li		$t4, 0xC3D2E1F0
+	
+	@message	= $a0
+	@last		= $a1
+	@temp		= $t5
+	
+	beq		@message, @last, sha1_process_last_blocks
+	
+	la		$ra, sha1_do_block_return1
+	j		sha1_do_block
 
-	sha1_do_block
+sha1_do_block_return1:
+	addiu	@message, @message, 64
+	bne		@message, @last, sha1_do_block
+
+sha1_process_last_blocks:
+	move	@message, $sp
+	la		$ra, sha1_do_block_return2
+	j		sha1_do_block
 	
+sha1_do_block_return2:
+	addiu	@message, @message, 64
+	addiu	@temp, @message, 32
+	bne		@temp, $fp, sha1_do_block
 	
+sha1_end:
+	lw		$ra, 4($fp)
+	move	$sp, $fp
+	lw		$fp, 0($fp)
 	
-	
-end:
-#end
+	jr		$ra
