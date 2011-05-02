@@ -36,7 +36,10 @@
 	syscall
 #end
 
-#define hexify
+j main		#For compatibility with MARS
+
+hexify:
+{
 	@string = $s0
 	@mask = $s1
 	@trimmed = $s2
@@ -49,26 +52,29 @@ loop:
 	addi	@count, @count, -1
 	addi	@string, @string, -1
 
-	and		@trimmed, %1, @mask
+	and		@trimmed, $a0, @mask
 	slti	@flag, @trimmed, 10
 	bne		@flag, $0, skip_add
-	addi	@trimmed, @trimmed, 7
+	addi	@trimmed, @trimmed, 39
 skip_add:
 	addi	@trimmed, @trimmed, 48
 	sb		@trimmed, 0(@string)
 
-	srl		%1, %1, 4
+	srl		$a0, $a0, 4
 	bne		@count, $0, loop
-#end
+
+	jr		$ra
+}
 
 #include read_whole_file.spp
+#include sha1.spp
 
 .data
 filename:
 .asciiz "input.bin"
 
 .text
-
+main:
 	read_whole_file	filename
 
 	beq		$v1, $0, swap_done
@@ -100,24 +106,33 @@ swap_done:
 	srl		$a1, $v1, 29	#load the top three bits into hlength
 	sll		$a2, $v1, 3		#load the bottom 29 bits into llength
 
-	la		$ra, hashing_done
-	j		sha1
-hashing_done:
+	jal		sha1
 
 	addiu	$s0, $sp, -4
-	sb		$0, 0($s0)
+	li		$s1, 0x0A		#Load a LF.  The null character comes for free
+	sw		$s1, 0($s0)
 	
 	li		$s1, 15
 
-	hexify	$t4
-	hexify	$t3
-	hexify	$t2
-	hexify	$t1
-	hexify	$t0
-	
+	move	$a0, $t4
+	jal		hexify
+
+
+	move	$a0, $t3
+	jal		hexify
+
+	move	$a0, $t2
+	jal		hexify
+
+	move	$a0, $t1
+	jal		hexify
+
+	move	$a0, $t0
+	jal		hexify
+
+output_result:	
 	move	$a0, $s0
 	print_string
 	
 	exit
 
-#include sha1.spp

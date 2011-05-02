@@ -128,19 +128,15 @@ sha1:
 	
 	beq		@message, @last, sha1_process_last_blocks
 	
-	la		$ra, sha1_do_block_return1
-	j		sha1_do_block
+	jal		sha1_do_block
 
-sha1_do_block_return1:
 	addiu	@message, @message, 64
 	bne		@message, @last, sha1_do_block
 
 sha1_process_last_blocks:
 	move	@message, $sp
-	la		$ra, sha1_do_block_return2
-	j		sha1_do_block
+	jal		sha1_do_block
 	
-sha1_do_block_return2:
 	addiu	@message, @message, 64
 	addiu	@temp, @message, 32
 	bne		@temp, $fp, sha1_do_block
