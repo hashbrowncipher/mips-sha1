@@ -1,302 +1,120 @@
-#define do_sha_block
+#include sha1_do_block.spp
 
-#1. Prepare the message schedule
+#define sha1
+{
+	sw		$fp, -4($sp)		#Push the frame pointer onto the stack
+	addiu	$fp, $sp, -4		#Set a new frame pointer
+	addiu	$sp, $fp, -160		#Allocate myself 8 words + 2 * 512 bits = 160 bytes on the stack
 
-#W_t(i) = M_t(i) where 0 ≤ t ≤ 15
-
-    lw @data, 0[@chunk]         #copy the chunk into stack memory, because we're gonna be extending it
-    sw @data, 0[$sp]
-    
-    lw @data, 4[@chunk]
-    sw @data, 4[$sp]
-    
-    lw @data, 8[@chunk]
-    sw @data, 8[$sp]
-    
-    lw @data, 12[@chunk]
-    sw @data, 12[$sp]
-    
-    lw @data, 16[@chunk]
-    sw @data, 16[$sp]
-    
-    lw @data, 20[@chunk]
-    sw @data, 20[$sp]
-    
-    lw @data, 24[@chunk]
-    sw @data, 24[$sp]
-    
-    lw @data, 28[@chunk]
-    sw @data, 28[$sp]
-    
-    lw @data, 32[@chunk]
-    sw @data, 32[$sp]
-    
-    lw @data, 36[@chunk]
-    sw @data, 36[$sp]
-    
-    lw @data, 40[@chunk]
-    sw @data, 40[$sp]
-    
-    lw @data, 44[@chunk]
-    sw @data, 44[$sp]
-    
-    lw @data, 48[@chunk]
-    sw @data, 48[$sp]
-    
-    lw @data, 52[@chunk]
-    sw @data, 52[$sp]
-    
-    lw @data, 56[@chunk]
-    sw @data, 56[$sp]
-    
-    lw @data, 60[@chunk]
-    sw @data, 60[$sp]
-
-@temp = $t5
-@w = $t6
-@i = $t7
-@limit = $s0
-
-#W_t(i) = ROTL_1(W[t−3] ⊕ W[t−8] ⊕ W[t−14] ⊕ W[t−16]) where 16 ≤ t ≤ 79
-
-    addiu @i, $sp, 64           #16 words == 64 bytes
-    addiu @limit, $sp, 320      #80 words == 320 bytes
-        
-extend_loop:                #extend the message schedule
-    lw      @w, -12[@i]
-    lw      @temp, -32[@i]
-    xor     @w, @w, @temp
-    lw      @temp, -56[@i]
-    xor     @w, @w, @temp
-    lw      @temp, -64[@i]
-    xor     @w, @w, @temp
-    
-    srl     @temp, @w, 31		#leftrotate @w by 1
-    sll     @w, @w, 1
-    or      @w, @w, @temp
-    sw      @w, 0[@i]
-    
-    addiu   @i, @i, 4
-	blt		@i, @limit, extend_loop
-    
-# 2. Initialize the five working variables, a, b, c, d, and e, with the (i-1)st hash value:
-
-@a = $s1
-@b = $s2
-@c = $s3
-@d = $s4
-@e = $s5
-
-    move    @a, @h0
-    move    @b, @h1
-    move    @c, @h2
-    move    @d, @h3
-    move    @e, @h4
-
-# 3. For t=0 to 79:
-# {
-# T = ROTL_5(a) + f_t(b, c, d) + e + K_t + W_t
-# e = d
-# d = c
-# c = ROTL 30 (b )
-# b = a
-# a = T
-# }
-
-    li      @i, 0
-
-confuse_loop:
-
-#cases for computing f_t(b, c, d) + K_t
-    addiu   @temp, @i, -80      # 0 ≤ i ≤ 19
-    bltz    @temp, case0
-    
-    addiu   @temp, @i, -80      # 20 ≤ i ≤ 39
-    bltz    @temp, case20
-    
-    addiu   @temp, @i, -80      # 40 ≤ i ≤ 59
-    bltz    @temp, case40
-    
-    j       case60              # 60 ≤ i ≤ 79
-
-@f = $s6
-     
-case0:
-#Ch(b, c, d) = (b ∧ c) ⊕ ( ¬ b ∧ d) 
-
-
-    and     @f, @b, @c          #@f    CONTAINS b ∧ c
-    nor     @temp, @b, $0       #@temp CONTAINS ¬ b
-    and     @temp, @temp, @d    #@temp CONTAINS ¬ b ∧ d
-    xor     @f, @f, @temp       #@f    CONTAINS (b ∧ c) ⊕ (¬ b ∧ d)
-    
-    li      @temp, 0x5A827999
-    addu    @f, @f, @temp
-    
-    j       end_case
-case20:
-#Parity(b, c, d) = b ⊕ c ⊕ d
-
-    xor     @f, @b, @c
-    xor     @f, @f, @d
-    
-    li      @temp, 0x6ED9EBA1
-    addu    @f, @f, @temp
-
-    j       end_case
-case40:
-#Maj(b, c, d) = (b ∧ c) ⊕ (b ∧ d) ⊕ (c ∧ d) 
-
-    and     @f, @b, @c
-    and     @temp, @b, @d
-    xor     @f, @f, @temp
-    
-    and     @temp, @c, @d
-    xor     @f, @f, @temp
-   
-    li      @temp, 0x8F1BBCDC
-    addu    @f, @f, @temp
-    
-    j       end_case
-case60:
-#Parity(b, c, d) = b ⊕ c ⊕ d
-
-    xor     @f, @b, @c
-    xor     @f, @f, @d
-    
-    li      @temp, 0xCA62C1D6 
-    addu    @f, @f, @temp
-
-end_case:
-
-    addu    @f, @f, @e              #@f CONTAINS f_t(b, c, d) + e + K_t
-
-
-	#TODO: Do I really need to use $at?
-
-    sll     @temp, @a, 5
-    srl     $at, @a, 27
-    or      @temp, @temp, $at       #@temp CONTAINS ROTL_5(a)
-    
-    addu    $at, @w, @i             #compute location of w[i]
-    lw      $at, 0[$at]             #load w[i] into $at
-    
-    addu    @temp, @temp, $at       #@temp CONTAINS ROTL_5(a) + w[i]
-    addu    @temp, @temp, @f        #add @f to @temp.  @f is now free for whatever use we need.
-    
-    move    @e, @d
-    move    @d, @c
-    
-    sll     @f, @b, 30              #@f is now free, remember?
-    srl     @c, @b, 2
-    or      @c, @c, @f
-    
-    move    @b, @a
-    move    @a, @temp
-    
-    addiu   @i, @i, 4
-    
-	#If i<80, we're not done yet.  Go back to the top of confuse_loop
-    addiu   @temp, @i, -320         #80 words == 320 bytes
-    bltz    @temp, confuse_loop
-    
-    addu    @h0, @h0, @a
-    addu    @h1, @h1, @b
-    addu    @h2, @h2, @c
-    addu    @h3, @h3, @d
-    addu    @h4, @h4, @e
-
-#end
-
-@message = $a0      #pointer to message
-@hlength = $a1      #length of message in bits, high part
-@llength = $a2		#length of message in bits, low part
+#pointer to message
+@message = $a0
+#length of message in bits, high part
+@hlength = $a1
+#length of message in bits, low part
+@llength = $a2
 
     sll     $t0, @message, 30       #$t0 CONTAINS 0 if the message is word aligned
     sltu    $v0, $0, $t0			#If not word aligned, set error code
     bne     $v0, $0, end			#Give up if not word aligned
 
+	sw 		$s7, -4($fp)
+	sw		$s6, -8($fp)
+	sw		$s5, -12($fp)
+	sw		$s4, -16($fp)
+	sw		$s3, -20($fp)
+	sw		$s2, -24($fp)
+	sw		$s1, -28($fp)
+	sw		$s0, -32($fp)
+
+	sw		$a2, -36($fp)		#We can go ahead and store the length on the stack now
+	sw		$a1, -40($fp)
+
 @blocks     = $t0
 @bits       = $t1
+	
+	sll     $t0, @hlength, 23
+	srl		$t1, @llength, 9
+	or      @blocks, $t1, $t0
 
-    srl     $t0, @llength, 3
-    sll     $t1, @hlength, 29
-    or      $t0, $t1, $t0
-    srl     $t0, $t0, 6
-    sll     $t0, $t0, 6             #$t0 CONTAINS the length of the message in bytes, truncated to the lowest block
+	sll		$t1, @llength, 23
+	srl		@bits, $t1, 23
 
-    sll     $t1, @llength, 23       
-    srl     @bits, @llength, 23     #$t1 CONTAINS (number of bits) % 512
+	#TODO: We may be able to get rid of $a1 and $a2 now
+	sltiu	$t2, $t1, 448			#If we have fewer than 448 bits, then we can give 512 bits of stack back
+	sll		$t2, $t2, 6
+	addu	$sp, $sp, $t2
 
-@srcitr     = $t3
-@dstitr     = $t4
-@dstend     = $t5
-@mask       = $t6
-@data       = $t7
-    
-    move    @srcitr, @message
-    move    @dstitr,                #assign the memory location of the last block to @dstitr
-    addiu   @dstend, @dstitr, 64    #there are 64 bytes in a 512 bit block
+{
+@dstitr = $t3
+@srcitr = $t4
+@limit  = $t5
+@temp	= $t6
+
+	add		@dstitr, $sp, 40			#This allows us to stop writing at @dstitr == -40($fp)
+
+	beq		@bits, $0, copy_done		#Skip copying if we have no extra bits laying around
+	
+	move	@limit, @bits
+
+	sll		@srcitr, @blocks, 6			#Number of bytes to the last block
+	add		@srcitr, @srcitr, @message	#Address of last block
 
 copy_loop:
-    sltu    @mask, $0, @bits
-    sra     @mask, @mask, @bits
-    lw      @data, 0[@srcitr]
-    
-    sw      @data, 0[@dstitr]
-    addiu   @srcitr, 4
-    addiu   @dstitr, 4
-    ble     @dstitr, @dstend, copy_loop
-    
-addiu   $sp, $sp, -320
-@chunk      =
+	lw		@temp, 0(@srcitr)
+	sw		@temp, -40(@dstitr)
+	addi	@limit, @limit, -32
+	addi	@srcitr, @srcitr, 4
+	addi	@dstitr, @dstitr, 4
+	bgtz	@limit, copy_loop
 
-@h0         = $t0
-@h1         = $t1
-@h2         = $t2
-@h3         = $t3
-@h4         = $t4
+copy_done:
+	beq		@dstitr, $fp, zero_done
+	
+zero_loop:
+	sw		$0, -40(@dstitr)
+	addi	@dstitr, @dstitr, 4
+	bne		@dstitr, $fp, zero_loop
+	
+zero_done:
+}
 
-    li @h0, 0x67452301
-    li @h1, 0xEFCDAB89
-    li @h2, 0x98BADCFE
-    li @h3, 0x10325476
-    li @h4, 0xC3D2E1F0
-    
-main_loop:                  #loop over message chunks
-    
-    
-    
-    
-    
-    
-    move    @i, @sp
-    addiu   @limit, @sp, 320
-    
-    
-    
+#Pad the data
 
+@pad_addr = $t7
+@pad_data = $t8
+@pad_temp = $t9
+	srl		@pad_addr, @bits, 5			#Divide bits by 32 to get the word
+	sll		@pad_addr, @pad_addr, 2			#Multiply by 4 to get the number of bytes
+	addu	@pad_addr, @pad_addr, $sp		#Position of the word where the message ends
+	
+	sll		@bits, @bits, 27
+	srl		@bits, @bits, 27
+	
+	lw		@pad_data, 0(@pad_addr)
+	
+	lui		@pad_temp, 0x8000
+	srlv	@pad_temp, @pad_temp, @bits
+	or		@pad_data, @pad_data, @pad_temp		#Pad with a 1 bit
+	
+	lui		@pad_temp, 0x8000
+	srav	@pad_temp, @pad_temp, @bits
+	and		@pad_data, @pad_data, @pad_temp		#Zero all of the other bits in the word
+	
+	sw		@pad_data, 0(@pad_addr)
+}
+	move	$a0, $sp
+	
+	
+	li		$t0, 0x67452301
+	li		$t1, 0xEFCDAB89
+	li		$t2, 0x98BADCFE
+	li		$t3, 0x10325476
+	li		$t4, 0xC3D2E1F0
 
-@f =
-@temp =
-
-
-
-
-
-
-    #We will have to copy out the data, because it is going to be extended by the padding
-
-
-    srl $t0, @dlength,  5           #Divide length by 32 to get floor(dlength) in words
-    sll $t0, @dlength,  2           #Multiply again by four bytes/word, because we want to compute the end address in bytes
-    add $t0, @mdata,    @dlength    #$t0 CONTAINS the word-aligned address of where to add my padding.
-
-
-    sll $t1, @dlength, 
-    srl $t1, @dlength, 29   #By zeroing the first 29 bits, we compute @dlength % 8
-
-
-    lw  $t1, @dlength, 
-
-    #l + 65 + k = 0 mod 512
+	sha1_do_block
+	
+	
+	
+	
+end:
+#end

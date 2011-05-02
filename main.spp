@@ -26,12 +26,42 @@
 	syscall
 #end
 
+#define print_string
+	li	$v0, 4
+	syscall
+#end
+
 #define	exit
 	li $v0, 10
 	syscall
 #end
 
+#define hexify
+	@string = $s0
+	@mask = $s1
+	@trimmed = $s2
+	@flag = $s3
+	@count = $s4
+	
+	li		@count, 8
+
+loop:
+	and		@trimmed, %1, @mask
+	slti	@flag, @trimmed, 10
+	bne		@flag, $0, skip_add
+	addi	@trimmed, @trimmed, 7
+skip_add:
+	addi	@trimmed, @trimmed, 48
+	sb		@trimmed, 0(@string)
+
+	srl		%1, %1, 4
+	addi	@count, @count, -1
+	addi	@string, @string, -1
+	bne		@count, $0, loop
+#end
+
 #include read_whole_file.spp
+#include sha1.spp
 
 .data
 filename:
@@ -40,9 +70,50 @@ filename:
 .text
 
 	read_whole_file	filename
-	
+
+	beq		$v1, $0, swap_done
+
+	move	$t0, $v0
+	addu	$t1, $v0, $v1
+
+swap_loop:
+
+	lw		$t2, 0($t0)
+
+	sb		$t2, 3($t0)
+	srl		$t2, $t2, 8
+
+	sb		$t2, 2($t0)
+	srl		$t2, $t2, 8
+
+	sb		$t2, 1($t0)
+	srl		$t2, $t2, 8
+
+	sb		$t2, 0($t0)
+
+	addi	$t0, $t0, 4
+	bgt		$t1, $t0, swap_loop
+
+swap_done:
+
 	move	$a0, $v0
 	srl		$a1, $v1, 29	#load the top three bits into hlength
 	sll		$a2, $v1, 3		#load the bottom 29 bits into llength
+
+	sha1
+
+	addiu	$s0, $sp, -5
+	sb		$0, 1($s0)
+	
+	li		$s1, 15
+
+	hexify	$t4
+	hexify	$t3
+	hexify	$t2
+	hexify	$t1
+	hexify	$t0
+
+	addiu	$a0, $s0, 1
+	print_string
 	
 	exit
